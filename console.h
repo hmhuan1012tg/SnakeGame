@@ -27,11 +27,11 @@
 #define MAP_WIDTH 50
 #define MAP_HEIGHT 25
 
-#define MENU_X 40
-#define MENU_Y 10
+#define MENU_X 30
+#define MENU_Y 8
 
-#define INFO_X 60
-#define INFO_Y 10
+#define INFO_X 52
+#define INFO_Y 5
 
 extern bool gamePaused;
 

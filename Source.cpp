@@ -27,13 +27,15 @@ int main() {
 		printMenu(choice);
 		Sleep(200);
 	}
+	
+	//Clear screen for later drawing
 	setColor(ColorCode_White);
+	system("cls");
 
 	//If choose not to exit, start game
 	if (choice != 2) {
 		if (choice == 1) //If choose to load saves
 			loadGame();
-		system("cls"); //Clear screen for drawing main game
 
 		//Main game loop
 		thread t1(gameThread); //Game thread
@@ -55,7 +57,8 @@ int main() {
 						break;
 					}
 					else if (c == 'L') { //Save game
-						pauseGame(handle_t1);
+						if(!gamePaused)
+							pauseGame(handle_t1);
 						saveGame();
 						resumeGame(handle_t1);
 					}
@@ -79,12 +82,14 @@ int main() {
 								snake.status = RIGHT;
 							break;
 						}
+						//Lock direction changes until snake completes moving 1 step
 						dirChanged = false;
 					}
 				}
 				else { //If snake is dead
 					if (c == 'Y') { //Play again
 						gameLevel = 0;
+						gameScore = 0;
 						updateLevel(snake);
 						resetData(snake, gate, food);
 					}
@@ -97,24 +102,10 @@ int main() {
 		}
 		t1.join(); //Wait for game thread to exit
 	}
-	
-	removeSnake(snake); //Release memory
 
-	//End game scene
-	system("cls");
-	int color = 1;
-	while (true) { //Goodbye screen
-		goToXY(MENU_X, MENU_Y);
-		setColor(color);
-		color = (++color) % 15 + 1;
-		cout << "Goodbye.";
-		goToXY(MENU_X - 5, MENU_Y + 1);
-		cout << "Press any key to exit.";
-		if (_kbhit())
-			break;
-		Sleep(200);
-	}
-	setColor(ColorCode_Black);
+	//When game is over
+	removeSnake(snake); //Release memory
+	endGame(); //Show ending message
 
 	return 0;
 }

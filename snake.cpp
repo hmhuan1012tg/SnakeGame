@@ -15,6 +15,7 @@ bool foodDrawn = false;
 bool gateDrawn = false;
 int gameLevel = 0;
 int gameSpeed = MIN_SPEED;
+int gameScore = 0;
 Cell oldTail;
 LinkedList* tempHead;
 
@@ -172,10 +173,9 @@ void initFood(FoodList& food, const Snake& snake, const Gate& gate) { //Create a
 		food.food[i].symbol = '#';
 		food.food[i].position.x = rand() % (MAP_WIDTH - 2) + 1;
 		food.food[i].position.y = rand() % (MAP_HEIGHT - 2) + 1;
-		while (hitSnakeHead(food.food[i], snake) || hitSnakeBody(food.food[i], snake)
-			|| hitWall(food.food[i], gate)) {
-			food.food[i].position.x = rand() % (MAP_WIDTH - 2);
-			food.food[i].position.y = rand() % (MAP_HEIGHT - 2);
+		while (hitSnakeHead(food.food[i], snake) || hitSnakeBody(food.food[i], snake)) {
+			food.food[i].position.x = rand() % (MAP_WIDTH - 2) + 1;
+			food.food[i].position.y = rand() % (MAP_HEIGHT - 2) + 1;
 		}
 	}
 	foodDrawn = false;
@@ -184,14 +184,19 @@ void initFood(FoodList& food, const Snake& snake, const Gate& gate) { //Create a
 void drawFood(const FoodList& food, int color) { //Draw food to screen
 	if (food.foodIndex >= 4)
 		return;
-	drawOneCell(food.food[food.foodIndex], ColorCode_White);
-	foodDrawn = color != ColorCode_Black;
+	drawOneCell(food.food[food.foodIndex], color);
+	if (hitSnakeHead(food.food[food.foodIndex], snake)
+	 || hitSnakeBody(food.food[food.foodIndex], snake))
+		foodDrawn = false;
+	else
+		foodDrawn = color != ColorCode_Black;
 }
 
 bool foodEaten(FoodList& food, const Snake& snake) { //check if snake eats food
 	if (!hitSnakeHead(food.food[food.foodIndex], snake))
 		return false;
 	food.foodIndex++;
+	gameScore++;
 	foodDrawn = false;
 	return true;
 }
@@ -209,7 +214,9 @@ void addSnake(Snake& snake, const Cell& oldTail) { //Add new node to snake to it
 
 bool freeCell(const Cell& c, const Snake& snake, const Gate& gate) {
 	return !hitWall(c, gate) && !hitSnakeBody(c, snake) && !hitSnakeHead(c, snake)
-		&& c.position.x > 0 && c.position.y > 0;
+		&& c.position.x > 0 && c.position.y > 0
+		&& c.position.x < MAP_WIDTH
+		&& c.position.y < MAP_HEIGHT;
 }
 
 void hitEffect(const Snake& snake, const Gate& gate, int color) { //Special effects when snake hits wall or hits itself
@@ -344,8 +351,8 @@ bool writeToFile(char* filename, const Snake& snake, const Gate& gate, const Foo
 	FILE* f = fopen(filename, "w");
 	if (!f)
 		return false;
-	fprintf(f, "%d %d %d\n", moveLock, gateCreated, isAlive);
-	fprintf(f, "%d\n", gameLevel);
+	fprintf(f, "%d %d %d\n", moveLock, gateCreated, dirChanged);
+	fprintf(f, "%d %d\n", gameLevel, gameScore);
 	fprintf(f, "%d %d\n", snake.length, snake.status);
 	LinkedList* iter = snake.head;
 	for (; iter != NULL; iter = iter->nextNode) {
@@ -365,8 +372,8 @@ bool readFromFile(char* filename, Snake& snake, Gate& gate, FoodList& food) {
 	if (!f)
 		return false;
 	removeSnake(snake);
-	fscanf(f, "%d %d %d", &moveLock, &gateCreated, &isAlive);
-	fscanf(f, "%d", &gameLevel);
+	fscanf(f, "%d %d %d", &moveLock, &gateCreated, &dirChanged);
+	fscanf(f, "%d %d", &gameLevel, &gameScore);
 	fscanf(f, "%d %d", &snake.length, &snake.status);
 	LinkedList* iter = snake.head;
 	initSnake(snake, snake.length, snake.status);
@@ -384,7 +391,7 @@ bool readFromFile(char* filename, Snake& snake, Gate& gate, FoodList& food) {
 		fscanf(f, "%d %d", &food.food[i].position.x, &food.food[i].position.y);
 		food.food[i].symbol = '#';
 	}
-		
+	gameSpeed = MIN_SPEED / gameLevel;
 	return true;
 }
 
@@ -416,14 +423,14 @@ void drawGame(const Snake& snake, const Gate& gate, const FoodList& food, int co
 
 void gameThread() {
 	while (true) {
-		if (isAlive) {
+		if (isAlive) { //When snake is alive
 			//Draw section
 			drawGame(snake, gate, food, ColorCode_White);
-
 			
 			//Change snake's position
 			moveSnake(snake);
 			
+			//Unlock direction changes
 			dirChanged = true;
 
 			//Check pass gate
@@ -434,11 +441,11 @@ void gameThread() {
 					snake.head = snake.head->nextNode; //Keep snake head still, temporarily points to next node
 					moveLock = true; //Lock snake movement
 				}
-				if (snake.head == NULL) { //If snake goes into gate completely
+				if (snake.head == NULL) { //If snake pass through the game
 					drawGate(gate, ColorCode_Black); //Erase gate
 					drawOneCell(oldTail, ColorCode_Black); //Erase snake tail
-					updateLevel(snake);
-					resetData(snake, gate, food);
+					updateLevel(snake); //Update game level
+					resetData(snake, gate, food); //Reset data based on current level
 				}
 			}
 
@@ -446,10 +453,16 @@ void gameThread() {
 			if (hitWall(snake.head->data, gate) 
 			 || hitSnakeBody(snake.head->data, snake)) { //If snake hits wall or itself, show effect
 				isAlive = false;
-				while(!isAlive) {
+				while(!isAlive) { //Show message
 					goToXY(INFO_X, INFO_Y);
 					setColor(ColorCode_White);
-					cout << "Game over, press Y to play again or other key to exit.";
+					cout << "Game over.";
+					goToXY(INFO_X, INFO_Y + 2);
+					cout << "Your score is " << gameScore << ".";
+					goToXY(INFO_X, INFO_Y + 4);
+					cout << "Press Y to play again.";
+					goToXY(INFO_X, INFO_Y + 6);
+					cout << "Press any other key to exit.";
 					hitEffect(snake, gate, ColorCode_Red); //Boom red
 					hitEffect(snake, gate, ColorCode_Black);
 					Sleep(100);
@@ -459,24 +472,20 @@ void gameThread() {
 			}
 
 			//Eating food processing
-			if (foodEaten(food, snake)) {//If snake eats food
-				drawFood(food, ColorCode_Black); //Erase current food
+			if (foodEaten(food, snake)) //If snake eats food
 				addSnake(snake, oldTail); //Keep old snake tail && add new node to tail
-			}
 			else
-				drawOneCell(oldTail, ColorCode_Black); //Remove old tail
+				drawOneCell(oldTail, ColorCode_Black); //Draw black old tail cell
 
-			//Draw updates
+			//Draw new snake after moving process
 			drawSnake(snake, ColorCode_White);
-
-			
 
 			if (food.foodIndex == 4 && !gateCreated) { //If one level is over, create a gate
 				initGate(gate, snake);
 				drawGate(gate, ColorCode_White);
 			}
 
-			//Update snake tail
+			//Update snake tail cell
 			oldTail = findTail(snake)->data;
 
 			Sleep(gameSpeed);
@@ -502,54 +511,126 @@ void printMenu(int choice) {
 	}
 }
 
+void processingBar(int x, int y) {
+	srand(static_cast<unsigned int>(time(0)));
+	int r = rand() % 500;
+	for (int i = 0; i < 25; i++) {
+		goToXY(x, y);
+		setColor(ColorCode_White);
+		cout << (i + 1) * 4 << "% completed: ";
+		string temp = " ";
+		for (int j = 0; j < i; j++) {
+			goToXY(x + 16, y);
+			setColor(ColorCode_MenuChoice);
+			temp += ' ';
+		}
+		cout << temp;
+		if (i < 6)
+			Sleep(r / 12);
+		else if (i < 18)
+			Sleep(r / 4);
+		else
+			Sleep(r / 8);
+	}
+}
+
 void saveGame() {
+	//Clear screen
 	setColor(ColorCode_White);
-	system("cls"); //Clear screen
-	goToXY(INFO_X, INFO_Y);
+	system("cls");
+
+	//Get save destination
+	goToXY(MENU_X - 10, MENU_Y);
 	setColor(ColorCode_White);
 	cout << "Where do you want to save your game ?: "; //Ask where to save
 	char filename[256];
 	cin.getline(filename, 256);
 
+	//Saving section
 	LinkedList* temp = snake.head; //If snake is in gate, get back to real head for saving
-	
 	snake.head = tempHead; //Back to real head
-
-	//Write to file
-	writeToFile(filename, snake, gate, food);
-
+	writeToFile(filename, snake, gate, food); //Write to file
 	snake.head = temp; //Return to the current head to pass the gate
 
-	//Inform game's been saved
-	goToXY(INFO_X, INFO_Y + 2);
+	//Inform game's been saving & finished
+	goToXY(MENU_X - 10, MENU_Y + 2);
+	cout << "Saving...";
+	processingBar(MENU_X - 10, MENU_Y + 4);
+	goToXY(MENU_X - 10, MENU_Y + 6);
 	setColor(ColorCode_White);
-	cout << "Game saved.";
-	Sleep(1000);
-	system("cls");
+	cout << "Saved. Resuming game...";
+
+	//Reset drawing conditions
 	mapDrawn = false;
 	gateDrawn = false;
 	foodDrawn = false;
+
+	//Wait a bit for player to get ready
+	Sleep(1000);
+	system("cls");
 }
 
 void loadGame() {
-	goToXY(INFO_X, INFO_Y + 2);
+	//Clear screen
 	setColor(ColorCode_White);
+	system("cls");
+
+	goToXY(MENU_X - 10, MENU_Y);
 	cout << "Enter file name: "; //Get input file name
 	char filename[256];
 	cin.getline(filename, 256);
 
-	//Read main data
-	readFromFile(filename, snake, gate, food);
+	goToXY(MENU_X - 10, MENU_Y + 2);
+	cout << "Loading...";
+	processingBar(MENU_X - 10, MENU_Y + 4);
+	setColor(ColorCode_White);
 
-	//Process when snake is in gate
-	LinkedList* iter = snake.head->nextNode;
-	while (iter != NULL
-		&& iter->data.position.x == snake.head->data.position.x
-		&& iter->data.position.y == snake.head->data.position.y)
-		iter = iter->nextNode;
-	if(iter != snake.head->nextNode)
-		snake.head = iter; //Points to the next node to pass the gate
+	//Read main data
+	if (readFromFile(filename, snake, gate, food)) {
+		
+		//Process when snake is in gate (continuous node from head have the same position)
+		LinkedList* iter = snake.head->nextNode;
+		while (iter != NULL
+			&& iter->data.position.x == snake.head->data.position.x
+			&& iter->data.position.y == snake.head->data.position.y)
+			iter = iter->nextNode;
+		if (iter != snake.head->nextNode)
+			snake.head = iter; 
+		
+		goToXY(MENU_X - 10, MENU_Y + 6);
+		cout << "Loaded. Starting game...";
+	}
+	else {
+		goToXY(MENU_X - 10, MENU_Y + 6);
+		cout << "That file doesn't exist. Starting game...";
+	}
+
+	//Wait a bit for player to get ready
+	Sleep(1000);
+
+	system("cls");
 }
 
+void endGame() {
+	//Clear screen
+	setColor(ColorCode_White);
+	system("cls");
+
+	//Show end game message
+	int color = 1;
+	while (true) { //Goodbye screen
+		goToXY(MENU_X + 6, MENU_Y);
+		setColor(color);
+		color = (++color) % 15 + 1;
+		cout << "Goodbye.";
+		goToXY(MENU_X, MENU_Y + 2);
+		cout << "Press any key to exit.";
+		if (_kbhit())
+			break;
+		Sleep(200);
+	}
+	
+	setColor(ColorCode_Black);
+}
 
 
